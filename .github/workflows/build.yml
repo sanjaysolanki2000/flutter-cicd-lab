@@ -1,39 +1,30 @@
 name: Build Flutter Flavors
-
 on:
   push:
-    branches:
-      - main
-      - staging
-      - dev
+    branches: [main, staging, dev]
   pull_request:
-    branches:
-      - main
-      - staging
-      - dev
+    branches: [main, staging, dev]
 
 jobs:
   build_android:
-    name: Build Android
+    name: Build Android ${{ (github.base_ref || github.ref_name) == 'main' && 'Prod' || ((github.base_ref || github.ref_name) == 'staging' && 'Staging' || 'Dev') }}
     runs-on: ubuntu-latest
-
+    env:
+      # push pe current branch, PR pe target (base) branch
+      BRANCH: ${{ github.base_ref || github.ref_name }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
 
-      # 1. Dynamically set flavor and target based on the branch
-      - name: Determine Flavor and Target
+      - name: Set flavor from branch
         run: |
-          if [[ "${{ github.ref_name }}" == "main" ]]; then
-            echo "FLAVOR=prod" >> $GITHUB_ENV
-            echo "TARGET=lib/main_production.dart" >> $GITHUB_ENV
-          elif [[ "${{ github.ref_name }}" == "staging" ]]; then
-            echo "FLAVOR=staging" >> $GITHUB_ENV
-            echo "TARGET=lib/main_staging.dart" >> $GITHUB_ENV
-          elif [[ "${{ github.ref_name }}" == "dev" ]]; then
-            echo "FLAVOR=dev" >> $GITHUB_ENV
-            echo "TARGET=lib/main_development.dart" >> $GITHUB_ENV
-          fi
+          case "$BRANCH" in
+            main)    echo "FLAVOR=prod"    >> $GITHUB_ENV; echo "TARGET=lib/main_production.dart"  >> $GITHUB_ENV ;;
+            staging) echo "FLAVOR=staging" >> $GITHUB_ENV; echo "TARGET=lib/main_staging.dart"     >> $GITHUB_ENV ;;
+            dev)     echo "FLAVOR=dev"     >> $GITHUB_ENV; echo "TARGET=lib/main_development.dart" >> $GITHUB_ENV ;;
+          esac
 
       - name: Setup Java
         uses: actions/setup-java@v3
@@ -50,13 +41,40 @@ jobs:
       - name: Install dependencies
         run: flutter pub get
 
-      # 2. Build using the environment variables set earlier
-      - name: Build Android Apk
-        run: flutter build apk --flavor ${{ env.FLAVOR }} -t ${{ env.TARGET }}
+      - name: Build Android APK
+        run: flutter build apk --release --flavor $FLAVOR -t $TARGET
 
-      # 3. Upload artifact using the correct flavor name
-      - name: Upload apk artifact
+      - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
           name: app-${{ env.FLAVOR }}-release
           path: build/app/outputs/flutter-apk/app-${{ env.FLAVOR }}-release.apk
+
+#      - name: Get committer email
+#        id: author
+#        run: |
+#          if [ "${{ github.event_name }}" = "pull_request" ]; then
+#            EMAIL=$(git log -1 --format=%ae HEAD^2)
+#          else
+#            EMAIL=$(git log -1 --format=%ae HEAD)
+#          fi
+#          echo "email=$EMAIL" >> $GITHUB_OUTPUT
+#
+#      - name: Send success mail
+#        if: success()
+#        uses: dawidd6/action-send-mail@v3
+#        with:
+#          server_address: smtp.gmail.com
+#          server_port: 465
+#          secure: true
+#          username: ${{ secrets.MAIL_USERNAME }}
+#          password: ${{ secrets.MAIL_PASSWORD }}
+#          subject: "✅ Build Success: ${{ env.FLAVOR }} (${{ env.BRANCH }})"
+#          to: ${{ steps.author.outputs.email }}
+#          from: GitHub CI <${{ secrets.MAIL_USERNAME }}>
+#          body: |
+#            Flutter ${{ env.FLAVOR }} build successful.
+#            Repo: ${{ github.repository }}
+#            Branch: ${{ env.BRANCH }}
+#            Commit: ${{ github.sha }}
+#            APK download (Artifacts section): ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
