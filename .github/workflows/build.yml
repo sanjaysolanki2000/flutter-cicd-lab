@@ -1,61 +1,78 @@
 name: Build Flutter Flavors
 on:
   push:
-    branches:
-      - main
-
-  pull_request:
-    branches:
-      - main
+    branches: [main, staging, dev]
 
 jobs:
   build_android:
-    name: Build Android
+    name: Build Android ${{ (github.base_ref || github.ref_name) == 'main' && 'Prod' || ((github.base_ref || github.ref_name) == 'staging' && 'Staging' || 'Dev') }}
     runs-on: ubuntu-latest
-
-    strategy:
-      matrix:
-        flavor: [ dev, prod, staging ]
-        include:
-          - flavor: dev
-            target: lib/main_development.dart
-          - flavor: staging
-            target: lib/main_staging.dart
-          - flavor: prod
-            target: lib/main_production.dart
+    env:
+      # push pe current branch, PR pe target (base) branch
+      BRANCH: ${{ github.base_ref || github.ref_name }}
     steps:
-      # 1. Check out the repository code
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
 
-      - name: setup java
+      - name: Set flavor from branch
+        run: |
+          case "$BRANCH" in
+            main)    echo "FLAVOR=prod"    >> $GITHUB_ENV; echo "TARGET=lib/main_production.dart"  >> $GITHUB_ENV ;;
+            staging) echo "FLAVOR=staging" >> $GITHUB_ENV; echo "TARGET=lib/main_staging.dart"     >> $GITHUB_ENV ;;
+            dev)     echo "FLAVOR=dev"     >> $GITHUB_ENV; echo "TARGET=lib/main_development.dart" >> $GITHUB_ENV ;;
+          esac
+
+      - name: Setup Java
         uses: actions/setup-java@v3
         with:
           distribution: 'zulu'
           java-version: '17'
 
-      # 2. Set up the Flutter SDK environment
       - name: Setup Flutter SDK
         uses: flutter-actions/setup-flutter@v4
         with:
           channel: 'stable'
-          version: '3.47.2' # Specify your preferred version or omit for the latest stable
-
-
+          version: '3.47.2'
 
       - name: Install dependencies
         run: flutter pub get
 
-      - name: Build Android Apk
-        run: flutter build apk --flavor ${{matrix.flavor}} -t ${{matrix.target}}
+      - name: Build Android APK
+        run: flutter build apk --release --flavor $FLAVOR -t $TARGET
 
-      - name: Upload apk artifact
+      - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: app-${{ matrix.flavor }}-release
-          path: build/app/outputs/flutter-apk/app-${{ matrix.flavor }}-release.apk
+          name: app-${{ env.FLAVOR }}-release
+          path: build/app/outputs/flutter-apk/app-${{ env.FLAVOR }}-release.apk
 
-
-
-
-
+#      - name: Get committer email
+#        id: author
+#        run: |
+#          if [ "${{ github.event_name }}" = "pull_request" ]; then
+#            EMAIL=$(git log -1 --format=%ae HEAD^2)
+#          else
+#            EMAIL=$(git log -1 --format=%ae HEAD)
+#          fi
+#          echo "email=$EMAIL" >> $GITHUB_OUTPUT
+#
+#      - name: Send success mail
+#        if: success()
+#        uses: dawidd6/action-send-mail@v3
+#        with:
+#          server_address: smtp.gmail.com
+#          server_port: 465
+#          secure: true
+#          username: ${{ secrets.MAIL_USERNAME }}
+#          password: ${{ secrets.MAIL_PASSWORD }}
+#          subject: "✅ Build Success: ${{ env.FLAVOR }} (${{ env.BRANCH }})"
+#          to: ${{ steps.author.outputs.email }}
+#          from: GitHub CI <${{ secrets.MAIL_USERNAME }}>
+#          body: |
+#            Flutter ${{ env.FLAVOR }} build successful.
+#            Repo: ${{ github.repository }}
+#            Branch: ${{ env.BRANCH }}
+#            Commit: ${{ github.sha }}
+#            APK download (Artifacts section): ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
