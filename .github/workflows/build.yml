@@ -1,61 +1,62 @@
 name: Build Flutter Flavors
+
 on:
   push:
     branches:
       - main
-
+      - staging
+      - dev
   pull_request:
     branches:
       - main
+      - staging
+      - dev
 
 jobs:
   build_android:
     name: Build Android
     runs-on: ubuntu-latest
 
-    strategy:
-      matrix:
-        flavor: [ dev, prod, staging ]
-        include:
-          - flavor: dev
-            target: lib/main_development.dart
-          - flavor: staging
-            target: lib/main_staging.dart
-          - flavor: prod
-            target: lib/main_production.dart
     steps:
-      # 1. Check out the repository code
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: setup java
+      # 1. Dynamically set flavor and target based on the branch
+      - name: Determine Flavor and Target
+        run: |
+          if [[ "${{ github.ref_name }}" == "main" ]]; then
+            echo "FLAVOR=prod" >> $GITHUB_ENV
+            echo "TARGET=lib/main_production.dart" >> $GITHUB_ENV
+          elif [[ "${{ github.ref_name }}" == "staging" ]]; then
+            echo "FLAVOR=staging" >> $GITHUB_ENV
+            echo "TARGET=lib/main_staging.dart" >> $GITHUB_ENV
+          elif [[ "${{ github.ref_name }}" == "dev" ]]; then
+            echo "FLAVOR=dev" >> $GITHUB_ENV
+            echo "TARGET=lib/main_development.dart" >> $GITHUB_ENV
+          fi
+
+      - name: Setup Java
         uses: actions/setup-java@v3
         with:
           distribution: 'zulu'
           java-version: '17'
 
-      # 2. Set up the Flutter SDK environment
       - name: Setup Flutter SDK
         uses: flutter-actions/setup-flutter@v4
         with:
           channel: 'stable'
-          version: '3.47.2' # Specify your preferred version or omit for the latest stable
-
-
+          version: '3.47.2'
 
       - name: Install dependencies
         run: flutter pub get
 
+      # 2. Build using the environment variables set earlier
       - name: Build Android Apk
-        run: flutter build apk --flavor ${{matrix.flavor}} -t ${{matrix.target}}
+        run: flutter build apk --flavor ${{ env.FLAVOR }} -t ${{ env.TARGET }}
 
+      # 3. Upload artifact using the correct flavor name
       - name: Upload apk artifact
         uses: actions/upload-artifact@v4
         with:
-          name: app-${{ matrix.flavor }}-release
-          path: build/app/outputs/flutter-apk/app-${{ matrix.flavor }}-release.apk
-
-
-
-
-
+          name: app-${{ env.FLAVOR }}-release
+          path: build/app/outputs/flutter-apk/app-${{ env.FLAVOR }}-release.apk
