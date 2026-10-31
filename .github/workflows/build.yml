@@ -14,14 +14,15 @@ jobs:
     runs-on: ubuntu-latest
 
     strategy:
-      matrix: [ dev, prod, staging ]
-      include:
-        - flavor: dev
-          target: lib/main_development.dart
-        - flavor: staging
-          target: lib/main_staging.dart
-        - flavor: prod
-          target: lib/main_production.dart
+      matrix:
+        flavor: [ dev, prod, staging ]
+        include:
+          - flavor: dev
+            target: lib/main_development.dart
+          - flavor: staging
+            target: lib/main_staging.dart
+          - flavor: prod
+            target: lib/main_production.dart
     steps:
       - name: Checkout
         uses: actions/checkout@v3
